@@ -6,9 +6,9 @@ import os
 from argon2 import PasswordHasher, exceptions as argon2_exceptions
 
 # Use mongomock for testing/dev, real MongoDB in production
-USE_MOCK = os.environ.get("USE_MOCK_DB", "false").lower() == "true"
+USE_MOCK_DB = os.environ.get("USE_MOCK_DB", "false").lower() == "true"
 
-if USE_MOCK:
+if USE_MOCK_DB:
     import mongomock
     client = mongomock.MongoClient()
 else:

@@ -1010,7 +1010,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const activeLabel = document.createElement("strong");
         activeLabel.textContent = "Active:";
 
-        const datesText = document.createTextNode(" " + startDate + " - " + expirationDate);
+        const datesText = document.createTextNode(` ${startDate} - ${expirationDate}`);
 
         datesSpan.appendChild(activeLabel);
         datesSpan.appendChild(datesText);
