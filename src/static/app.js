@@ -875,6 +875,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const announcementMessage = document.getElementById("announcement-message");
   const charCount = document.getElementById("char-count");
 
+  // Track edit state
+  let editingAnnouncementId = null;
+
   // Character counter for announcement message
   if (announcementMessage && charCount) {
     announcementMessage.addEventListener("input", () => {
@@ -886,22 +889,64 @@ document.addEventListener("DOMContentLoaded", () => {
   async function fetchActiveAnnouncements() {
     try {
       const response = await fetch("/announcements?active_only=true");
-      const announcements = await response.json();
+      
+      if (!response.ok) {
+        console.error("Error fetching announcements: HTTP status", response.status, response.statusText);
+        if (announcementContainer) {
+          announcementContainer.innerHTML = "";
+          const errorBanner = document.createElement("div");
+          errorBanner.className = "announcement-banner error";
+          errorBanner.setAttribute("role", "status");
+          errorBanner.setAttribute("aria-live", "polite");
+          errorBanner.textContent = "Announcements are temporarily unavailable. Please try again later.";
+          announcementContainer.appendChild(errorBanner);
+        }
+        return;
+      }
+
+      let announcements;
+      try {
+        announcements = await response.json();
+      } catch (parseError) {
+        console.error("Error parsing announcements response as JSON:", parseError);
+        if (announcementContainer) {
+          announcementContainer.innerHTML = "";
+          const errorBanner = document.createElement("div");
+          errorBanner.className = "announcement-banner error";
+          errorBanner.setAttribute("role", "status");
+          errorBanner.setAttribute("aria-live", "polite");
+          errorBanner.textContent = "Announcements are temporarily unavailable. Please try again later.";
+          announcementContainer.appendChild(errorBanner);
+        }
+        return;
+      }
 
       // Clear existing announcements
-      announcementContainer.innerHTML = "";
+      if (announcementContainer) {
+        announcementContainer.innerHTML = "";
 
-      // Display each active announcement
-      announcements.forEach(announcement => {
-        const banner = document.createElement("div");
-        banner.className = "announcement-banner";
-        banner.setAttribute("role", "status");
-        banner.setAttribute("aria-live", "polite");
-        banner.innerHTML = announcement.message;
-        announcementContainer.appendChild(banner);
-      });
+        // Display each active announcement
+        announcements.forEach(announcement => {
+          const banner = document.createElement("div");
+          banner.className = "announcement-banner";
+          banner.setAttribute("role", "status");
+          banner.setAttribute("aria-live", "polite");
+          // Use textContent to avoid executing any HTML/JS from announcement.message
+          banner.textContent = announcement.message;
+          announcementContainer.appendChild(banner);
+        });
+      }
     } catch (error) {
       console.error("Error fetching announcements:", error);
+      if (announcementContainer) {
+        announcementContainer.innerHTML = "";
+        const errorBanner = document.createElement("div");
+        errorBanner.className = "announcement-banner error";
+        errorBanner.setAttribute("role", "status");
+        errorBanner.setAttribute("aria-live", "polite");
+        errorBanner.textContent = "Announcements are temporarily unavailable. Please try again later.";
+        announcementContainer.appendChild(errorBanner);
+      }
     }
   }
 
@@ -909,7 +954,21 @@ document.addEventListener("DOMContentLoaded", () => {
   async function fetchAllAnnouncements() {
     try {
       const response = await fetch("/announcements");
-      const announcements = await response.json();
+      
+      if (!response.ok) {
+        console.error("Error fetching announcements: HTTP status", response.status, response.statusText);
+        announcementsList.innerHTML = "<p class='error-message'>Failed to load announcements.</p>";
+        return;
+      }
+
+      let announcements;
+      try {
+        announcements = await response.json();
+      } catch (parseError) {
+        console.error("Error parsing announcements response as JSON:", parseError);
+        announcementsList.innerHTML = "<p class='error-message'>Failed to load announcements.</p>";
+        return;
+      }
 
       // Clear list
       announcementsList.innerHTML = "";
@@ -933,21 +992,59 @@ document.addEventListener("DOMContentLoaded", () => {
         const isActive = (!announcement.start_date || announcement.start_date <= currentDate) && 
                         announcement.expiration_date >= currentDate;
         
-        item.innerHTML = `
-          <div class="announcement-content">
-            <div class="announcement-text">${announcement.message}</div>
-            <div class="announcement-meta">
-              <span class="announcement-dates">
-                <strong>Active:</strong> ${startDate} - ${expirationDate}
-              </span>
-              ${isActive ? '<span class="status-badge active">Active</span>' : '<span class="status-badge inactive">Inactive</span>'}
-            </div>
-          </div>
-          <div class="announcement-actions">
-            <button class="btn-edit" data-id="${announcement.id}" title="Edit">✏️</button>
-            <button class="btn-delete" data-id="${announcement.id}" title="Delete">🗑️</button>
-          </div>
-        `;
+        // Build announcement content without using innerHTML for user-controlled data
+        const contentDiv = document.createElement("div");
+        contentDiv.className = "announcement-content";
+
+        const textDiv = document.createElement("div");
+        textDiv.className = "announcement-text";
+        // Use textContent to avoid executing any HTML/JS from announcement.message
+        textDiv.textContent = announcement.message;
+
+        const metaDiv = document.createElement("div");
+        metaDiv.className = "announcement-meta";
+
+        const datesSpan = document.createElement("span");
+        datesSpan.className = "announcement-dates";
+
+        const activeLabel = document.createElement("strong");
+        activeLabel.textContent = "Active:";
+
+        const datesText = document.createTextNode(" " + startDate + " - " + expirationDate);
+
+        datesSpan.appendChild(activeLabel);
+        datesSpan.appendChild(datesText);
+
+        const statusBadge = document.createElement("span");
+        statusBadge.className = "status-badge " + (isActive ? "active" : "inactive");
+        statusBadge.textContent = isActive ? "Active" : "Inactive";
+
+        metaDiv.appendChild(datesSpan);
+        metaDiv.appendChild(statusBadge);
+
+        contentDiv.appendChild(textDiv);
+        contentDiv.appendChild(metaDiv);
+
+        const actionsDiv = document.createElement("div");
+        actionsDiv.className = "announcement-actions";
+
+        const editButton = document.createElement("button");
+        editButton.className = "btn-edit";
+        editButton.dataset.id = announcement.id;
+        editButton.title = "Edit";
+        editButton.textContent = "✏️";
+
+        const deleteButton = document.createElement("button");
+        deleteButton.className = "btn-delete";
+        deleteButton.dataset.id = announcement.id;
+        deleteButton.title = "Delete";
+        deleteButton.textContent = "🗑️";
+
+        actionsDiv.appendChild(editButton);
+        actionsDiv.appendChild(deleteButton);
+
+        item.appendChild(contentDiv);
+        item.appendChild(actionsDiv);
 
         announcementsList.appendChild(item);
       });
@@ -978,7 +1075,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const response = await fetch("/announcements", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "X-Username": currentUser.username
         },
         body: JSON.stringify(data)
       });
@@ -1009,7 +1107,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       const response = await fetch(`/announcements/${id}`, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: {
+          "X-Username": currentUser.username
+        }
       });
 
       if (!response.ok) {
@@ -1027,16 +1128,59 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Edit announcement (simplified - just delete and recreate)
+  // Update existing announcement
+  async function updateAnnouncement(id, data) {
+    try {
+      const response = await fetch(`/announcements/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Username": currentUser.username
+        },
+        body: JSON.stringify(data)
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || "Failed to update announcement");
+      }
+
+      showAnnouncementMessage("Announcement updated successfully!", "success");
+      addAnnouncementForm.reset();
+      charCount.textContent = "0";
+      editingAnnouncementId = null;
+      
+      // Update form button text back to "Add"
+      const submitButton = addAnnouncementForm.querySelector('button[type="submit"]');
+      if (submitButton) {
+        submitButton.textContent = "Add Announcement";
+      }
+      
+      // Refresh both lists
+      await fetchAllAnnouncements();
+      await fetchActiveAnnouncements();
+    } catch (error) {
+      showAnnouncementMessage(error.message, "error");
+      console.error("Error updating announcement:", error);
+    }
+  }
+
+  // Edit announcement - pre-fill form and track edit mode
   function editAnnouncement(id, announcement) {
+    // Set edit mode
+    editingAnnouncementId = id;
+    
     // Pre-fill form with existing data
     announcementMessage.value = announcement.message;
     document.getElementById("announcement-start-date").value = announcement.start_date || "";
     document.getElementById("announcement-expiration-date").value = announcement.expiration_date;
     charCount.textContent = announcement.message.length;
-
-    // Delete old announcement first
-    deleteAnnouncement(id);
+    
+    // Update form button text to indicate editing
+    const submitButton = addAnnouncementForm.querySelector('button[type="submit"]');
+    if (submitButton) {
+      submitButton.textContent = "Update Announcement";
+    }
     
     // Scroll to form
     document.querySelector(".add-announcement-section").scrollIntoView({ behavior: "smooth" });
@@ -1068,6 +1212,13 @@ document.addEventListener("DOMContentLoaded", () => {
       announcementsModal.classList.add("hidden");
       addAnnouncementForm.reset();
       charCount.textContent = "0";
+      editingAnnouncementId = null;
+      
+      // Reset form button text
+      const submitButton = addAnnouncementForm.querySelector('button[type="submit"]');
+      if (submitButton) {
+        submitButton.textContent = "Add Announcement";
+      }
     }, 300);
   }
 
@@ -1101,12 +1252,23 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      await addAnnouncement({
-        message,
-        start_date: startDate,
-        expiration_date: expirationDate,
-        created_by: currentUser.username
-      });
+      // Check if we're editing or adding
+      if (editingAnnouncementId) {
+        // Update existing announcement
+        await updateAnnouncement(editingAnnouncementId, {
+          message,
+          start_date: startDate,
+          expiration_date: expirationDate
+        });
+      } else {
+        // Add new announcement
+        await addAnnouncement({
+          message,
+          start_date: startDate,
+          expiration_date: expirationDate,
+          created_by: currentUser.username
+        });
+      }
     });
   }
 
